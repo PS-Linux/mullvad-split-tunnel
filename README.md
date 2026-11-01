@@ -3,6 +3,8 @@
 A button for the [Noctalia](https://noctalia.dev) bar (Hyprland) that switches
 favourite apps in and out of the Mullvad VPN tunnel.
 
+![The split-tunnel popup above the bar icon, with Brave as a favourite](docs/popup.png)
+
 - **Hover** the ⑂ icon: a small popup above it lists your favourites with an
   on/off switch each. Click a row to flip it, or the button at the bottom to
   open the manager.
