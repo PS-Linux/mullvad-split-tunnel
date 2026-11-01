@@ -1,0 +1,42 @@
+# Mullvad split tunneling from the bar.
+# Hover the icon for a quick popup to switch favourite apps in or out of the
+# tunnel; click it for the full manager (add / remove favourites).
+# The work is done by ~/.local/bin/mullvad-split-menu.
+
+id = "ps/mullvad-split"
+name = "Mullvad Split Tunnel"
+version = "1.0.0"
+plugin_api = 43
+author = "ps"
+license = "MIT"
+dependencies = ["mullvad", "jq", "hyprctl"]
+tags = ["vpn", "network", "privacy"]
+icon = "arrows-split-2"
+description = "Switch favourite apps in and out of the Mullvad tunnel from the bar."
+
+[[widget]]
+id = "button"
+entry = "widget.luau"
+
+[[panel]]
+id = "popup"
+entry = "popup.luau"
+# Attached panels can only align to an end of the bar, not to a widget. The
+# icon sits near the right end, so align there and make the popup wide enough
+# to cover it: moving the pointer straight up from the icon lands inside.
+width = 380
+height = "content"
+max_height = 420
+placement = "attached"
+position = "bottom_right"
+keyboard_focus = "none"
+dismiss_on_outside_click = false
+
+[[panel]]
+id = "manager"
+entry = "manager.luau"
+width = 440
+height = 540
+placement = "floating"
+position = "center"
+dismiss_on_outside_click = true

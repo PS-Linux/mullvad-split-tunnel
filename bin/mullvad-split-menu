@@ -1,0 +1,214 @@
+#!/usr/bin/env bash
+# Quick menu for Mullvad split tunneling.
+# Lists favourite apps; picking one moves it in or out of the tunnel.
+#
+# Favourites live in ~/.config/mullvad-split/favourites, one per line:
+#   Name|process|launch command
+# "process" is the exact process name (pgrep -x). Prefix it with ~ to match
+# against the full command line instead (pgrep -f).
+
+set -u
+
+FAV_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/mullvad-split/favourites"
+mkdir -p "$(dirname "$FAV_FILE")"
+[ -f "$FAV_FILE" ] || printf '# Name|process|launch command\n' > "$FAV_FILE"
+
+ADD_ITEM="+  Add favourite from open windows"
+REMOVE_ITEM="−  Remove a favourite"
+CLEAR_ITEM="⨯  Stop excluding everything"
+EDIT_ITEM="✎  Edit favourites file"
+
+menu() { # menu <prompt>  (items on stdin)
+    if command -v noctalia >/dev/null && pgrep -x noctalia >/dev/null; then
+        noctalia dmenu -p "$1"
+    else
+        rofi -dmenu -i -p "$1"
+    fi
+}
+
+notify() { notify-send -a "Mullvad split tunnel" -i mullvad-vpn "$@" 2>/dev/null || true; }
+
+# The cgroup is the source of truth: `mullvad split-tunnel list` misses
+# processes started with mullvad-exclude.
+EXCL_CGROUP=/sys/fs/cgroup/net_cls/mullvad-exclusions/cgroup.procs
+excluded_pids() {
+    if [ -r "$EXCL_CGROUP" ]; then
+        cat "$EXCL_CGROUP"
+    else
+        mullvad split-tunnel list 2>/dev/null | grep -E '^[0-9]+$'
+    fi
+}
+
+# PIDs of an app: matching processes plus all their descendants, so helper
+# processes (renderers, zygotes, ...) are moved along with the main one.
+app_pids() {
+    local roots
+    if [[ $1 == "~"* ]]; then
+        roots=$(pgrep -u "$UID" -f -- "${1:1}")
+    else
+        roots=$(pgrep -u "$UID" -x -- "$1")
+    fi
+    [ -n "$roots" ] || return 0
+    ps -u "$UID" -o pid=,ppid= | awk -v roots="$roots" '
+        BEGIN { n = split(roots, r, "\n"); for (i = 1; i <= n; i++) keep[r[i]] = 1 }
+        { parent[$1] = $2 }
+        END {
+            do {
+                changed = 0
+                for (p in parent) if (!(p in keep) && (parent[p] in keep)) { keep[p] = 1; changed = 1 }
+            } while (changed)
+            for (p in keep) if (p != "") print p
+        }'
+}
+
+read_favourites() {
+    NAMES=() PROCS=() CMDS=()
+    local name proc cmd
+    while IFS='|' read -r name proc cmd; do
+        [[ -z $name || $name == \#* ]] && continue
+        NAMES+=("$name") PROCS+=("$proc") CMDS+=("$cmd")
+    done < "$FAV_FILE"
+}
+
+toggle() { # toggle <index>
+    local name=${NAMES[$1]} proc=${PROCS[$1]} cmd=${CMDS[$1]}
+    local pids excl
+    pids=$(app_pids "$proc")
+    excl=$(excluded_pids)
+
+    if [ -z "$pids" ]; then
+        if [ -z "$cmd" ]; then
+            notify "$name isn't running" "No launch command set in $FAV_FILE"
+            return
+        fi
+        setsid -f mullvad-exclude bash -c "$cmd" >/dev/null 2>&1
+        notify "$name launched outside the VPN"
+    elif grep -qxFf <(echo "$pids") <<<"$excl"; then
+        for p in $pids; do mullvad split-tunnel delete "$p" >/dev/null 2>&1; done
+        notify "$name now goes through the VPN" "Open connections switch over once the app reconnects or restarts."
+    else
+        for p in $pids; do mullvad split-tunnel add "$p" >/dev/null 2>&1; done
+        notify "$name now bypasses the VPN" "Open connections switch over once the app reconnects or restarts."
+    fi
+}
+
+add_favourite() {
+    local lines=() line choice pid class comm cmd
+    while IFS=$'\t' read -r class pid; do
+        [ -n "$pid" ] && [ "$pid" -gt 0 ] || continue
+        comm=$(cat "/proc/$pid/comm" 2>/dev/null) || continue
+        line="$class  ($comm)"
+        [[ " ${lines[*]-} " == *" $line "* ]] || lines+=("$line"$'\t'"$pid")
+    done < <(hyprctl clients -j | jq -r '.[] | "\(.class)\t\(.pid)"' | sort -u)
+
+    [ ${#lines[@]} -gt 0 ] || { notify "No open windows found"; return; }
+    choice=$(printf '%s\n' "${lines[@]%%$'\t'*}" | menu "Add which app?") || return
+    for line in "${lines[@]}"; do
+        [ "${line%%$'\t'*}" = "$choice" ] || continue
+        add_by_pid "${line##*$'\t'}" "${choice%  (*}"
+    done
+}
+
+add_by_pid() { # add_by_pid <pid> <window class>
+    local pid=$1 class=${2##*.}   # com.anthropic.Claude -> Claude
+    local comm cmd
+    comm=$(cat "/proc/$pid/comm" 2>/dev/null) || { notify "That app is no longer running"; return 1; }
+    cmd=$(tr '\0' '\n' < "/proc/$pid/cmdline" | head -n 1)
+    [ -n "$cmd" ] || cmd=$(readlink "/proc/$pid/exe")
+    cmd=${cmd% (deleted)}
+    grep -q "^[^|]*|$comm|" "$FAV_FILE" && { notify "$class is already a favourite"; return; }
+    printf '%s|%s|%s\n' "$class" "$comm" "$cmd" >> "$FAV_FILE"
+    notify "Added $class to favourites"
+}
+
+remove_favourite() {
+    read_favourites
+    [ ${#NAMES[@]} -gt 0 ] || return
+    local choice
+    choice=$(printf '%s\n' "${NAMES[@]}" | menu "Remove which favourite?") || return
+    remove_by_name "$choice"
+}
+
+remove_by_name() {
+    local tmp; tmp=$(mktemp)
+    awk -F'|' -v n="$1" '$1 != n' "$FAV_FILE" > "$tmp" && mv "$tmp" "$FAV_FILE"
+    notify "Removed $1 from favourites"
+}
+
+# state <index>: prints excluded | running | stopped
+state() {
+    local pids
+    pids=$(app_pids "${PROCS[$1]}")
+    if [ -z "$pids" ]; then
+        echo stopped
+    elif grep -qxFf <(echo "$pids") <(excluded_pids); then
+        echo excluded
+    else
+        echo running
+    fi
+}
+
+index_of() { # index_of <name>
+    local i
+    for i in "${!NAMES[@]}"; do
+        [ "${NAMES[$i]}" = "$1" ] && { echo "$i"; return; }
+    done
+    return 1
+}
+
+# Non-interactive commands, used by the Noctalia bar plugin. They print JSON.
+case ${1-} in
+    status)
+        read_favourites
+        for i in "${!NAMES[@]}"; do
+            jq -nc --arg name "${NAMES[$i]}" --arg proc "${PROCS[$i]#\~}" --arg state "$(state "$i")" \
+                '{name: $name, proc: $proc, state: $state}'
+        done | jq -sc .
+        exit 0 ;;
+    windows)
+        hyprctl clients -j | jq -c '[.[] | select(.pid > 0) | {class, title, pid}] | unique_by(.class)'
+        exit 0 ;;
+    toggle)
+        read_favourites
+        i=$(index_of "${2-}") || { echo "unknown favourite: ${2-}" >&2; exit 1; }
+        notify() { :; }   # the plugin shows the result itself
+        toggle "$i"
+        exit 0 ;;
+    add) add_by_pid "${2-}" "${3-}"; exit ;;
+    remove) remove_by_name "${2-}"; exit ;;
+    clear) mullvad split-tunnel clear >/dev/null; exit ;;
+    "") ;;
+    *) echo "usage: ${0##*/} [status|windows|toggle NAME|add PID CLASS|remove NAME|clear]" >&2; exit 2 ;;
+esac
+
+while :; do
+    read_favourites
+    excl=$(excluded_pids)
+    items=()
+    for i in "${!NAMES[@]}"; do
+        pids=$(app_pids "${PROCS[$i]}")
+        if [ -z "$pids" ]; then
+            items+=("○  ${NAMES[$i]}  ·  not running — launch outside VPN")
+        elif [ -n "$excl" ] && grep -qxFf <(echo "$pids") <<<"$excl"; then
+            items+=("●  ${NAMES[$i]}  ·  bypassing VPN")
+        else
+            items+=("○  ${NAMES[$i]}  ·  through VPN")
+        fi
+    done
+    items+=("$ADD_ITEM" "$REMOVE_ITEM" "$CLEAR_ITEM" "$EDIT_ITEM")
+
+    choice=$(printf '%s\n' "${items[@]}" | menu "Split tunnel") || exit 0
+    [ -n "$choice" ] || exit 0
+
+    case $choice in
+        "$ADD_ITEM") add_favourite ;;
+        "$REMOVE_ITEM") remove_favourite ;;
+        "$CLEAR_ITEM") mullvad split-tunnel clear >/dev/null && notify "Nothing is excluded from the VPN now" ;;
+        "$EDIT_ITEM") xdg-open "$FAV_FILE" >/dev/null 2>&1 & exit 0 ;;
+        *)
+            for i in "${!items[@]}"; do
+                [ "${items[$i]}" = "$choice" ] && toggle "$i"
+            done
+            ;;
+    esac
+done
