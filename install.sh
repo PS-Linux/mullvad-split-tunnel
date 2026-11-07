@@ -100,4 +100,4 @@ print(f"bar.{name}.{section}", json.dumps(items))
 ' "$WIDGET_NAME" "$AFTER")
 noctalia msg config-set "$BAR_PATH" "$NEW_LIST" >/dev/null
 
-say "Done. Hover the ⑂ icon in the bar for the quick popup, click it for the manager."
+say "Done. Right click the ⑂ icon in the bar for the quick popup, click it for the manager."

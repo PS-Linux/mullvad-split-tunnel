@@ -3,16 +3,7 @@
 
 local C = require("./common.luau")
 
--- Every node reports enter/leave; the widget waits a short grace period after
--- a leave, so moving between rows never closes the popup.
-local function onHover(state)
-  noctalia.state.set("popupHovered", state == "true")
-end
-
 local function openManager()
-  -- Set before closing: our onClose clears popupHovered, which starts the
-  -- widget's close timer, and the widget must already know the manager is up.
-  noctalia.state.set("managerOpen", true)
   panel.close()
   noctalia.togglePanel(C.MANAGER)
 end
@@ -21,7 +12,7 @@ local function render()
   local apps = noctalia.state.get("apps")
   local rows = {}
 
-  table.insert(rows, ui.row({ gap = 8, align = "center", paddingH = 4, onHover = onHover }, {
+  table.insert(rows, ui.row({ gap = 8, align = "center", paddingH = 4 }, {
     ui.glyph({ name = "arrows-split-2", size = 16, color = "primary" }),
     ui.label({ text = "Split tunnel", fontWeight = "semibold", flexGrow = 1 }),
   }))
@@ -43,7 +34,6 @@ local function render()
         radius = 8,
         fill = app.state == "excluded" and "primary/0.10" or "surface_container",
         tooltip = app.state == "stopped" and "Starts the app outside the VPN" or nil,
-        onHover = onHover,
         onClick = function()
           C.toggle(app.name)
         end,
@@ -51,19 +41,17 @@ local function render()
     end
   end
 
-  table.insert(rows, ui.row({ justify = "center", onHover = onHover }, {
+  table.insert(rows, ui.row({ justify = "center" }, {
     ui.button({
       glyph = (apps ~= nil and #apps == 0) and "plus" or "settings",
       text = (apps ~= nil and #apps == 0) and "Add favourites" or "Manage favourites",
       variant = (apps ~= nil and #apps == 0) and "primary" or "ghost",
       controlSize = "sm",
-      -- The button takes the hover from the row around it, so report it too.
-      onHover = onHover,
       onClick = openManager,
     }),
   }))
 
-  panel.render(ui.column({ gap = 6, padding = 10, onHover = onHover }, rows))
+  panel.render(ui.column({ gap = 6, padding = 10 }, rows))
 end
 
 noctalia.state.watch("apps", render)
@@ -76,5 +64,5 @@ end
 
 function onClose()
   noctalia.state.set("popupOpen", false)
-  noctalia.state.set("popupHovered", false)
+  noctalia.state.set("popupClosedAt", noctalia.nowMs())
 end

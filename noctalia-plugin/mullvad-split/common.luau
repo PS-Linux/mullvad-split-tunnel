@@ -69,7 +69,7 @@ function M.icon(app)
 end
 
 -- A small on/off switch drawn from boxes, so the whole row stays one click
--- and hover target (a real ui.toggle would swallow both).
+-- target (a real ui.toggle would swallow the click).
 function M.switch(on, pending)
   return ui.row({
     width = 34,

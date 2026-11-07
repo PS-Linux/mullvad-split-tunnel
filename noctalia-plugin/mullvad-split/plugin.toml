@@ -1,6 +1,6 @@
 # Mullvad split tunneling from the bar.
-# Hover the icon for a quick popup to switch favourite apps in or out of the
-# tunnel; click it for the full manager (add / remove favourites).
+# Right click the icon for a quick popup to switch favourite apps in or out of
+# the tunnel; left click it for the full manager (add / remove favourites).
 # The work is done by ~/.local/bin/mullvad-split-menu.
 
 id = "ps/mullvad-split"
@@ -23,14 +23,13 @@ id = "popup"
 entry = "popup.luau"
 # Attached panels can only align to an end of the bar, not to a widget. The
 # icon sits near the right end, so align there and make the popup wide enough
-# to cover it: moving the pointer straight up from the icon lands inside.
+# to sit over it.
 width = 380
 height = "content"
 max_height = 420
 placement = "attached"
 position = "bottom_right"
-keyboard_focus = "none"
-dismiss_on_outside_click = false
+dismiss_on_outside_click = true
 
 [[panel]]
 id = "manager"

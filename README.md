@@ -5,9 +5,10 @@ favourite apps in and out of the Mullvad VPN tunnel.
 
 ![The split-tunnel popup above the bar icon, with Brave as a favourite](docs/popup.png)
 
-- **Hover** the ⑂ icon: a small popup above it lists your favourites with an
-  on/off switch each. Click a row to flip it, or the button at the bottom to
-  open the manager.
+- **Right click** the ⑂ icon: a small popup above it lists your favourites with
+  an on/off switch each. Click a row to flip it, or the button at the bottom to
+  open the manager. Click anywhere else or right click the icon again to close
+  it.
 - **Click** the icon: the manager window opens, where you can add open apps as
   favourites, remove favourites, or stop excluding everything.
 - The icon turns the accent colour while any app is bypassing the VPN.
@@ -63,7 +64,7 @@ The installer also adds a `[widget.mullvad-split]` entry to Noctalia's settings
 - Noctalia hot-reloads the `.luau` files on save. After changing `plugin.toml`,
   run `noctalia msg plugins disable ps/mullvad-split` and `... enable ...`.
 - Check a change with `noctalia plugins lint noctalia-plugin/mullvad-split`.
-- Script-driven pointer moves (`hyprctl dispatch movecursor`) don't trigger bar
-  hover events, so hover has to be tested by hand. Noctalia's log is
-  `~/.cache/noctalia/noctalia.log`; `noctalia.log()` from Lua shows up there as
-  `[script-runtime]`.
+- Clicks on the bar icon have to be tested by hand, but the panels can be opened
+  with `noctalia msg panel-open ps/mullvad-split:popup` (or `:manager`). Noctalia's
+  log is `~/.cache/noctalia/noctalia.log`; `noctalia.log()` from Lua shows up there
+  as `[script-runtime]`.

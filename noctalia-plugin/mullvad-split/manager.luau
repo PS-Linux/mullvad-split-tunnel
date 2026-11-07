@@ -95,7 +95,7 @@ function render()
     table.insert(body, ui.label({ text = "Every open app is already a favourite.", color = "on_surface_variant" }))
   end
 
-  panel.render(ui.column({ gap = 10, padding = 16 }, {
+  panel.render(ui.column({ flexGrow = 1, gap = 10, padding = 16 }, {
     ui.row({ gap = 8, align = "center" }, {
       ui.glyph({ name = "arrows-split-2", size = 20, color = "primary" }),
       ui.label({ text = "Mullvad split tunnel", fontWeight = "bold", fontSize = 16, flexGrow = 1 }),
@@ -113,7 +113,7 @@ function render()
       color = "on_surface_variant",
       maxLines = 3,
     }),
-    ui.scroll({ height = 370, gap = 6 }, body),
+    ui.scroll({ flexGrow = 1, gap = 6 }, body),
     ui.row({ justify = "end" }, {
       ui.button({
         text = "Stop excluding everything",
@@ -134,9 +134,9 @@ noctalia.state.watch("apps", function()
   render()
 end)
 
--- The widget reads this so the hover popup doesn't open over (and replace) us.
 function onClose()
   noctalia.state.set("managerOpen", false)
+  noctalia.state.set("managerClosedAt", noctalia.nowMs())
 end
 
 function onOpen()
